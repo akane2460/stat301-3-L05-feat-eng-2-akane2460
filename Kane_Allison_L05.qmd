@@ -1,0 +1,280 @@
+---
+title: "L05 Feature Engineering II"
+subtitle: "Data Science 3 with R (STAT 301-3)"
+author: "Allison Kane"
+pagetitle: "L05 Allison Kane"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+
+execute:
+  warning: false
+  
+from: markdown+emoji
+reference-location: margin
+citation-location: margin
+---
+
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+[Allison Repo Link](https://github.com/stat301-3-2024-spring/L05-feat-eng-2-akane2460)
+
+:::
+
+
+## Overview
+
+The goal of this lab is to (1) expand our feature engineering understanding and (2) introduce a new model type: **M**ultivariate **A**daptive **R**egression **S**plines (MARS).
+
+
+## Instructions
+
+We will be utilizing `wildfires.csv` dataset contained in the data subdirectory. `wildfires_codebook.html` provides a quick overview of the data which is where students should begin.
+
+Useful Readings:
+
+- [TMWR Chapter 16 Dimensionality Reduction](https://www.tmwr.org/dimensionality)
+- [TMWR Bookclub notes](https://r4ds.github.io/bookclub-tmwr/dimensionality-reduction.html)
+
+
+## Exercise
+
+::: {.callout-note icon="false"}
+## Prediction goal
+
+Our goal is to predict whether or not a wildfire will reach it (`wlf`) given all the other variables in our dataset except for `burned`.
+
+:::
+
+### Exercise 1
+
+Name 2 model types that are sensitive to skewed predictors or predictors with extreme/unusual values (i.e. outliers).
+
+::: {.callout-tip icon="false"}
+## Solution
+
+KNN and SVMs are more sensitive to skewed predictors and outliers. 
+
+:::
+
+Are there any model types that are immune to such issues with their predictors? If so, name one and explain why it is immune to outliers.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+Some models can tolerate outliers and skewed predictors more readily. Models that create relationships between ranked predictor and response variables (instead of actual values) like tree-based models are more immune to outliers. Tree-based models can more readily handle unusual values or skewed distributions with this ranking approach. 
+
+:::
+
+
+### Exercise 2
+
+When is a standardization process (think scaling) essential? Provide an example of when it is essential.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+A standardization process would be essential in cases where predictors in the dataset are sufficiently skewed. For example, in instances where the predictors exhibit a relationship that is is non-linear, like modeling population growth, adjusting the scale is critical to produce accurate predictions. 
+
+:::
+
+### Exercise 3
+
+Name 2 model types that are adversely affected by highly correlated predictor variables. Name two methods that could be used to help with this issue --- identify the `step_*()` functions that implement the identified methods.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+Linear regression models can see multicolinearity affect the model's variance, affecting its coefficient estimates and driving unreliable predictions. SVMs also can be affected by multicolinearity, since the distance between data points is highly relevant to the model's predictions. Two methods to combat this issue include step_interact(), which identifies and includes interaction terms in a model reducing their effects, and step_pca(), which creates principal components to maximize variance and reduce the effects of correlations among predictors. 
+
+:::
+
+### Exercise 4
+
+Prepare your data for modeling. For tuning we suggest using 5 folds and 3 repeats.
+
+#### Task 1
+
+Create a "minimal effort/kitchen sink" recipe that predicts `wlf` using all variables except for `burned`.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+#| label: ex 4 task 1
+#| eval: false
+
+recipe_ks <- recipe(wlf ~ .,  data = wildfires_train) |> 
+  step_dummy(all_nominal_predictors()) |>
+  step_nzv(all_numeric_predictors()) |> 
+  step_normalize(all_numeric_predictors())
+
+load(here("recipes/recipe_ks.rda"))
+
+```
+
+
+:::
+
+
+#### Task 2
+
+Create a recipe with more advanced feature engineering that predicts `wlf` using all variables except for `burned` and the following steps
+
+  - use a Yeo-Johnson transformation on `windspd`
+  - remove highly correlated variables (above 90%)
+  - add interactions between all predictor variables
+  - add a principal component step (could try kernel pca as well) in order to reduce the dimensionality after adding all two-way interactions. Tune the number of components as well by flagging it with `tune()`. 
+
+
+::: {.callout-note}
+In several feature engineering steps there are often parameters that must be chosen. For example the `deg_free` in a `step_ns()` transformation or the number of components (`num_comp`) in a `step_pca()`. Rather than "guess" the best setting for them, it is often better to tune these hyperparameters. 
+:::
+  
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+#| label: ex 3 task 2
+#| eval: false
+
+recipe_advanced <- recipe(wlf ~ .,  data = wildfires_train) |> 
+  step_YeoJohnson(windspd) |> 
+  step_dummy(all_nominal_predictors()) |>
+  step_corr(all_numeric_predictors()) |> 
+  step_interact(terms = ~.*.) |> 
+  step_nzv(all_numeric_predictors()) |> 
+  step_normalize(all_numeric_predictors()) |> 
+  step_pca(all_numeric_predictors(), num_comp = tune())
+
+load(here("recipes/recipe_advanced.rda"))
+```
+
+
+:::
+
+### Exercise 5
+
+Train 2 MARS models. One model should use the recipe created in Exercise 4 Task 1 and the other model should use the recipe created in Exercise 4 Task 2. There should be no other differences between these two models.
+
+- Model 1 (kitchen sink): tune `num_terms` and `prod_degree`
+- Model 2 (more feature engineering): tune `num_terms`, `prod_degree`, and `num_comp`
+
+::: {.callout-note}
+For the kitchen sink we will be leveraging the fact that MARS will be automatically searching non-linear relationships though interactions and splines. So a high number of terms makes sense. 
+
+For the model utilizing more featuring engineering, we first include all two-way interactions (expand the predictor space -- number of predictor columns) and then use principal components to reduce the predictor space. Doing the expansion prior to making the principal components is done in hopes of capturing non-linear relationship information in the components. This means we don't need many terms in the MARS model, say no more than 5, and we don't want too many principal components, say no more than 10. 
+:::
+
+Jointly tuning a recipe step and model specification parameters requires a slight adjustment to building the tuning grid. You will need to `extract_parameter_set_dials` from the recipe and from the model. You then need to use `bind_rows()` to combine the output so that all parameters to be tuned are in one object. Then you can construct a grid that contains all parameters flagged for tuning.
+
+
+::: {.callout-tip icon="false"}
+## Solution
+KS recipe:
+
+```{r}
+#| label: ex 5 ks recipe
+#| eval: false
+
+mars_spec <- mars(
+  num_terms = tune(),
+  prod_degree = tune()
+  ) |> 
+  set_mode("classification") |> 
+  set_engine("earth")
+
+# define workflow ----
+mars_wflow <-
+  workflow() |> 
+  add_model(mars_spec) |> 
+  add_recipe(recipe_ks)
+
+# hyperparameter tuning values ----
+mars_params <- hardhat::extract_parameter_set_dials(mars_spec) |> 
+  update(
+    num_terms = num_terms(range = c(1L, 25L))
+  )
+
+# build grid
+mars_grid <- grid_regular(mars_params, levels = 24)
+
+```
+
+
+Advanced recipe:
+
+```{r}
+#| label: ex 5 advanced recipe
+#| eval: false
+#| 
+# model specifications ----
+mars_spec <- mars(
+  num_terms = tune(),
+  prod_degree = tune()
+) |> 
+  set_mode("classification") |> 
+  set_engine("earth")
+
+# define workflow ----
+mars_wflow <-
+  workflow() |> 
+  add_model(mars_spec) |> 
+  add_recipe(recipe_advanced)
+
+# hyperparameter tuning values ----
+mars_params <- hardhat::extract_parameter_set_dials(mars_spec) |> 
+  update(
+    num_terms = num_terms(range = c(1L, 5L))
+  )
+
+rec_params <- hardhat::extract_parameter_set_dials(recipe_advanced) |> 
+  update(
+    num_comp = num_comp(range = c(1L, 10L))
+  )
+
+all_params <- bind_rows(mars_params, rec_params)
+
+# build grid
+mars_grid <- grid_regular(all_params, levels = 24)
+
+```
+
+:::
+
+
+What were the optimal tuning parameters for each model?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+Optimal tuning parameters for the kitchen sink model: 4 num_terms, 2 prod_degree
+
+Optimal tuning parameters for the advanced model: 5 num_terms, 2 prod_degree, 10 num_comp
+
+:::
+
+Does one of your recipes result in a significantly better model? Be sure to clearly state the metric chosen, the metric mean, standard error, and the run time of each model.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+The advanced model is significantly better.
+
+|.metric |   mean|   std_err| runtime|
+|:-------|------:|---------:|-------:|
+|roc_auc | 0.9596| 0.0058394|  75.096|
+
+The mean roc_auc is .9796 with a standard error of 0.0058394, indicating that the model has a strong ability to discriminate between instances where a wildfire reached the wildlife and when it did not. The runtime of this model is approximately 75.1 seconds. 
+
+:::
